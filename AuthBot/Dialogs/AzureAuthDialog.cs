@@ -95,7 +95,7 @@ namespace AuthBot.Dialogs
             }
             else
             {
-                await this.LogIn(context, msg);
+                await this.CheckForLogin(context, msg);
             }
         }
 
@@ -163,7 +163,13 @@ namespace AuthBot.Dialogs
             return cardButtons;
         }
 
-        private async Task LogIn(IDialogContext context, IMessageActivity msg)
+        /// <summary>
+        /// Checks if we are able to get an access token. If not, we prompt for a login
+        /// </summary>
+        /// <param name="context"></param>
+        /// <param name="msg"></param>
+        /// <returns></returns>
+        protected virtual async Task CheckForLogin(IDialogContext context, IMessageActivity msg)
         {
             try
             {

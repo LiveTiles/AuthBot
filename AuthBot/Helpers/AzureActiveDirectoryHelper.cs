@@ -32,9 +32,11 @@ namespace AuthBot.Helpers
             if (string.Equals(AuthSettings.Mode, "v2", StringComparison.OrdinalIgnoreCase))
             {
                 InMemoryTokenCacheMSAL tokenCache = new InMemoryTokenCacheMSAL();
-                Microsoft.Identity.Client.ConfidentialClientApplication client = new Microsoft.Identity.Client.ConfidentialClientApplication(AuthSettings.ClientId, redirectUri.ToString(),
+                Microsoft.Identity.Client.ConfidentialClientApplication client = new Microsoft.Identity.Client.ConfidentialClientApplication("https://login.microsoftonline.com/" + AuthSettings.Tenant + "/oauth2/v2.0",
+                    AuthSettings.ClientId, redirectUri.ToString(),
                     new Microsoft.Identity.Client.ClientCredential(AuthSettings.ClientSecret),
                     tokenCache);
+
 
                 //var uri = "https://login.microsoftonline.com/" + AuthSettings.Tenant + "/oauth2/v2.0/authorize?response_type=code" +
                 //    "&client_id=" + AuthSettings.ClientId +
