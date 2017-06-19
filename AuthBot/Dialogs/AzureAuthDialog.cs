@@ -111,6 +111,8 @@ namespace AuthBot.Dialogs
             Attachment plAttachment = null;
             switch (msg.ChannelId)
             {
+                case "skypeforbusiness":
+                    return context.PostAsync(this.prompt + "[Click here](" + authenticationUrl + ")");
                 case "emulator":
                 case "skype":
                     {
