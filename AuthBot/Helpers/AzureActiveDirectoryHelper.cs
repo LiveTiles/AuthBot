@@ -5,29 +5,25 @@ namespace AuthBot.Helpers
     using System.Text;
     using System.Threading.Tasks;
     using System.Web;
-    using Microsoft.Bot.Builder.Dialogs;
     using Models;
 
     public static class AzureActiveDirectoryHelper
     {
-        public static async Task<string> GetAuthUrlAsync(ResumptionCookie resumptionCookie, string resourceId)
+        public static async Task<string> GetAuthUrlAsync(string authenticationId, string resourceId)
         {
-            var extraParameters = BuildExtraParameters(resumptionCookie);
-
             Uri redirectUri = new Uri(AuthSettings.RedirectUrl);
-                Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext context = new Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext(AuthSettings.EndpointUrl + "/" + AuthSettings.Tenant);
-                var uri = await context.GetAuthorizationRequestUrlAsync(
-                    resourceId,
-                    AuthSettings.ClientId,
-                    redirectUri,
-                    Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier.AnyUser,
-                    $"state={extraParameters}");
-                return uri.ToString();       
+            Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext context = new Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext(AuthSettings.EndpointUrl + "/" + AuthSettings.Tenant);
+            var uri = await context.GetAuthorizationRequestUrlAsync(
+                resourceId,
+                AuthSettings.ClientId,
+                redirectUri,
+                Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier.AnyUser,
+                $"state={authenticationId}");
+            return uri.ToString();
         }
 
-        public static async Task<string> GetAuthUrlAsync(ResumptionCookie resumptionCookie, string[] scopes)
+        public static async Task<string> GetAuthUrlAsync(string authenticationId, string[] scopes)
         {
-            var extraParameters = BuildExtraParameters(resumptionCookie);
             Uri redirectUri = new Uri(AuthSettings.RedirectUrl);
             if (string.Equals(AuthSettings.Mode, "v2", StringComparison.OrdinalIgnoreCase))
             {
@@ -36,20 +32,11 @@ namespace AuthBot.Helpers
                     AuthSettings.ClientId, redirectUri.ToString(),
                     new Microsoft.Identity.Client.ClientCredential(AuthSettings.ClientSecret),
                     tokenCache);
-
-
-                //var uri = "https://login.microsoftonline.com/" + AuthSettings.Tenant + "/oauth2/v2.0/authorize?response_type=code" +
-                //    "&client_id=" + AuthSettings.ClientId +
-                //    "&client_secret=" + AuthSettings.ClientSecret +
-                //    "&redirect_uri=" + HttpUtility.UrlEncode(AuthSettings.RedirectUrl) +
-                //    "&scope=" + HttpUtility.UrlEncode("openid profile " + string.Join(" ", scopes)) +
-                //    "&state=" + encodedCookie;
-
-
+                                
                 var uri = await client.GetAuthorizationRequestUrlAsync(
                    scopes,
                     null,
-                    $"state={extraParameters}");
+                    $"state={authenticationId}");
                 return uri.ToString();
             }
             else if (string.Equals(AuthSettings.Mode, "b2c", StringComparison.OrdinalIgnoreCase))
@@ -67,6 +54,7 @@ namespace AuthBot.Helpers
             AuthResult authResult = AuthResult.FromADALAuthenticationResult(result, tokenCache);
             return authResult;
         }
+
         public static async Task<AuthResult> GetTokenByAuthCodeAsync(string authorizationCode, Microsoft.Identity.Client.TokenCache tokenCache, string[] scopes)
         {
             Microsoft.Identity.Client.ConfidentialClientApplication client = new Microsoft.Identity.Client.ConfidentialClientApplication(AuthSettings.ClientId, AuthSettings.RedirectUrl, new Microsoft.Identity.Client.ClientCredential(AuthSettings.ClientSecret), tokenCache);            
@@ -100,22 +88,6 @@ namespace AuthBot.Helpers
         public static string TokenDecoder(string token)
         {
             return Encoding.UTF8.GetString(HttpServerUtility.UrlTokenDecode(token));
-        }
-
-        private static string BuildExtraParameters(ResumptionCookie resumptionCookie)
-        {
-            var encodedCookie = UrlToken.Encode(resumptionCookie);
-
-            //var queryString = HttpUtility.ParseQueryString(string.Empty);
-            //queryString["userId"] = resumptionCookie.Address.UserId;
-            //queryString["botId"] = resumptionCookie.Address.BotId;
-            //queryString["conversationId"] = resumptionCookie.Address.ConversationId;
-            //queryString["serviceUrl"] = resumptionCookie.Address.ServiceUrl;
-            //queryString["channelId"] = resumptionCookie.Address.ChannelId;
-            //queryString["locale"] = resumptionCookie.Locale ?? "en";
-
-            //return TokenEncoder(queryString.ToString());
-            return encodedCookie;
         }
     }
 }

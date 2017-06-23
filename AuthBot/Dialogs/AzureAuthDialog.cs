@@ -18,22 +18,23 @@ namespace AuthBot.Dialogs
         protected string resourceId { get; }
         protected string[] scopes { get; }
         protected string prompt { get; }
-
-
+        string _authenticationId;
 
         public AzureAuthDialog(string resourceId, string prompt = "Please click to sign in: ")
         {
             this.resourceId = resourceId;
             this.prompt = prompt;
         }
+
         public AzureAuthDialog(string[] scopes, string prompt = "Please click to sign in: ")
         {
             this.scopes = scopes;
             this.prompt = prompt;
         }
 
-
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         public async Task StartAsync(IDialogContext context)
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
         {
             context.Wait(this.MessageReceivedAsync);
         }
@@ -59,29 +60,24 @@ namespace AuthBot.Dialogs
                     }
                     else if (context.UserData.TryGetValue<int>(ContextConstants.MagicNumberKey, out magicNumber))
                     {
-                        if (msg.Text == null)
+                        if (msg.Text.Length >= 6 && magicNumber.ToString() == msg.Text.Substring(0, 6))
                         {
-                            await context.PostAsync($"Please paste back the number you received in your authentication screen.");
+                            context.UserData.SetValue<string>(ContextConstants.MagicNumberValidated, "true");
 
-                            context.Wait(this.MessageReceivedAsync);
+                            // Remove temp authentication conversation reverence
+                            AuthenticationStorageHelper.Delete(_authenticationId);
+                            _authenticationId = string.Empty;
+
+                            context.Done($"Thanks {authResult.UserName}. You are now logged in. ");
                         }
                         else
                         {
+                            context.UserData.RemoveValue(ContextConstants.AuthResultKey);
+                            context.UserData.SetValue<string>(ContextConstants.MagicNumberValidated, "false");
+                            context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
+                            await context.PostAsync($"I'm sorry but I couldn't validate your number. Please try authenticating once again. ");
 
-                            if (msg.Text.Length >= 6 && magicNumber.ToString() == msg.Text.Substring(0, 6))
-                            {
-                                context.UserData.SetValue<string>(ContextConstants.MagicNumberValidated, "true");
-                                context.Done($"Thanks {authResult.UserName}. You are now logged in. ");
-                            }
-                            else
-                            {
-                                context.UserData.RemoveValue(ContextConstants.AuthResultKey);
-                                context.UserData.SetValue<string>(ContextConstants.MagicNumberValidated, "false");
-                                context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
-                                await context.PostAsync($"I'm sorry but I couldn't validate your number. Please try authenticating once again. ");
-
-                                context.Wait(this.MessageReceivedAsync);
-                            }
+                            context.Wait(this.MessageReceivedAsync);
                         }
                     }
                 }
@@ -190,13 +186,16 @@ namespace AuthBot.Dialogs
                     }
                     else
                     {
-                        var resumptionCookie = new ResumptionCookie(msg);
+                        // Save authentication conversation reference to temp storage
+                        _authenticationId = Guid.NewGuid().ToString();
+                        AuthenticationStorageHelper.UploadConversationReference(_authenticationId, 
+                            new ConversationReference(msg.Id, msg.From, msg.Recipient, msg.Conversation, msg.ChannelId, msg.ServiceUrl));
 
                         string authenticationUrl;
                         if (resourceId != null)
-                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(resumptionCookie, resourceId);
+                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, resourceId);
                         else
-                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(resumptionCookie, scopes);
+                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, scopes);
 
                         await PromptToLogin(context, msg, authenticationUrl);
                         context.Wait(this.MessageReceivedAsync);

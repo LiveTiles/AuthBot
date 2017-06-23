@@ -85,7 +85,7 @@ namespace AuthBot
             context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
             context.UserData.RemoveValue(ContextConstants.MagicNumberValidated);
             string signoutURl = "https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=" + System.Net.WebUtility.UrlEncode(AuthSettings.RedirectUrl);
-            await context.PostAsync($"In order to finish the sign out, please click at this [link]({signoutURl}).");
+            await context.PostAsync($"In order to finish the sign out, please click this [link]({signoutURl}).");
         }
 
     }

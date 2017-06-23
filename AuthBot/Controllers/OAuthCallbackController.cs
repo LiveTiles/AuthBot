@@ -24,78 +24,67 @@ namespace AuthBot.Controllers
 
         [HttpGet]
         [Route("api/OAuthCallback")]
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         public async Task<HttpResponseMessage> OAuthCallback()
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
         {
             try
             {
-               
-                    var resp = new HttpResponseMessage(HttpStatusCode.OK);
-                    resp.Content = new StringContent($"<html><body>You have been signed out. You can now close this window.</body></html>", System.Text.Encoding.UTF8, @"text/html");
-                    return resp;
-               
+                var resp = new HttpResponseMessage(HttpStatusCode.OK);
+                resp.Content = new StringContent($"<html><body>You have been signed out. You can now close this window.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                return resp;
             }
             catch (Exception ex)
             {
                 // Callback is called with no pending message as a result the login flow cannot be resumed.
                 return Request.CreateErrorResponse(HttpStatusCode.BadRequest, ex);
             }
-
         }
+
         [HttpGet]
         [Route("api/OAuthCallback")]
         public async Task<HttpResponseMessage> OAuthCallback(
-            [FromUri] string code, 
-            [FromUri] string state, 
+            [FromUri] string code,
+            [FromUri] string state,
             CancellationToken cancellationToken)
         {
             try
             {
-
-                var queryParams = state;
-                object tokenCache = null;
+                // Get the token
+                AuthResult authResult = null;
                 if (string.Equals(AuthSettings.Mode, "v1", StringComparison.OrdinalIgnoreCase))
                 {
-                    tokenCache = new Microsoft.IdentityModel.Clients.ActiveDirectory.TokenCache();
+                    var tokenCache = new Microsoft.IdentityModel.Clients.ActiveDirectory.TokenCache();
+
+                    // Exchange the Auth code with Access token
+                    authResult = await AzureActiveDirectoryHelper.GetTokenByAuthCodeAsync(code, (Microsoft.IdentityModel.Clients.ActiveDirectory.TokenCache)tokenCache);
                 }
                 else if (string.Equals(AuthSettings.Mode, "v2", StringComparison.OrdinalIgnoreCase))
                 {
-                    tokenCache = new Microsoft.Identity.Client.TokenCache();
+                    var tokenCache = new Microsoft.Identity.Client.TokenCache();
+
+                    // Exchange the Auth code with Access token
+                    authResult = await AzureActiveDirectoryHelper.GetTokenByAuthCodeAsync(code, (Microsoft.Identity.Client.TokenCache)tokenCache, Models.AuthSettings.Scopes);
                 }
                 else if (string.Equals(AuthSettings.Mode, "b2c", StringComparison.OrdinalIgnoreCase))
-                {
-                }
+                    throw new NotImplementedException("B2C has not been implemented.");
 
-                var resumptionCookie = UrlToken.Decode<ResumptionCookie>(queryParams);
+                // Get authentication conversation reference from temp storage
+                var conversationReference = AuthenticationStorageHelper.GetConversationReference(state);
+
                 // Create the message that is send to conversation to resume the login flow
-                var message = resumptionCookie.GetMessage();
-               
+                var message = conversationReference.GetPostToBotMessage();
+
+                //IMPORTANT: DO NOT REMOVE THE MAGIC NUMBER CHECK THAT WE DO HERE. THIS IS AN ABSOLUTE SECURITY REQUIREMENT
+                //REMOVING THIS WILL REMOVE YOUR BOT AND YOUR USERS TO SECURITY VULNERABILITIES. 
+                //MAKE SURE YOU UNDERSTAND THE ATTACK VECTORS AND WHY THIS IS IN PLACE.
+                int magicNumber = GenerateRandomNumber();
+
+                // Save token and auth data to user bot data
+                bool writeSuccessful = false;
                 using (var scope = DialogModule.BeginLifetimeScope(Conversation.Container, message))
                 {
-                    var client = scope.Resolve<IConnectorClient>();                
-                    AuthResult authResult = null;
-                    if (string.Equals(AuthSettings.Mode, "v1", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Exchange the Auth code with Access token
-                        var token = await AzureActiveDirectoryHelper.GetTokenByAuthCodeAsync(code, (Microsoft.IdentityModel.Clients.ActiveDirectory.TokenCache)tokenCache);
-                        authResult = token;
-                    }
-                    else if (string.Equals(AuthSettings.Mode, "v2", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Exchange the Auth code with Access token
-                        var token = await AzureActiveDirectoryHelper.GetTokenByAuthCodeAsync(code, (Microsoft.Identity.Client.TokenCache)tokenCache,Models.AuthSettings.Scopes);
-                        authResult = token;
-                    }
-                    else if (string.Equals(AuthSettings.Mode, "b2c", StringComparison.OrdinalIgnoreCase))
-                    {
-                    }
-                    
                     IStateClient sc = scope.Resolve<IStateClient>();
-
-                    //IMPORTANT: DO NOT REMOVE THE MAGIC NUMBER CHECK THAT WE DO HERE. THIS IS AN ABSOLUTE SECURITY REQUIREMENT
-                    //REMOVING THIS WILL REMOVE YOUR BOT AND YOUR USERS TO SECURITY VULNERABILITIES. 
-                    //MAKE SURE YOU UNDERSTAND THE ATTACK VECTORS AND WHY THIS IS IN PLACE.
-                    int magicNumber = GenerateRandomNumber();
-                    bool writeSuccessful = false;
                     uint writeAttempts = 0;
                     while (!writeSuccessful && writeAttempts++ < MaxWriteAttempts)
                     {
@@ -108,28 +97,42 @@ namespace AuthBot.Controllers
                             sc.BotState.SetUserData(message.ChannelId, message.From.Id, userData);
                             writeSuccessful = true;
                         }
-                        catch (HttpOperationException)
+                        catch (Exception)
                         {
                             writeSuccessful = false;
                         }
                     }
-                    var resp = new HttpResponseMessage(HttpStatusCode.OK);
+                }
+
+                var reply = message.CreateReply();
+                using (var scope = DialogModule.BeginLifetimeScope(Conversation.Container, reply))
+                {
+                    var client = scope.Resolve<IConnectorClient>();
+
                     if (!writeSuccessful)
                     {
-                        message.Text = String.Empty; // fail the login process if we can't write UserData
-                        await Conversation.ResumeAsync(resumptionCookie, message);
-                        resp.Content = new StringContent("<html><body>Could not log you in at this time, please try again later</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                        reply.Text = "Could not log you in at this time, please try again later.";
+                        await client.Conversations.SendToConversationAsync(reply);
                     }
                     else
                     {
-                        await Conversation.ResumeAsync(resumptionCookie, message);
-                        if (message.ChannelId == "skypeforbusiness")
-                            resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> {magicNumber} </body></html>", System.Text.Encoding.UTF8, @"text/html");
-                        else
-                            resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> <h1>{magicNumber}</h1>.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                        reply.Text = "Please paste back the number you received in your authentication screen.";
+                        await client.Conversations.SendToConversationAsync(reply);
+                        //await Conversation.ResumeAsync(conversationReference, message);
                     }
-                    return resp;
                 }
+
+                var resp = new HttpResponseMessage(HttpStatusCode.OK);
+                if (!writeSuccessful)
+                    resp.Content = new StringContent("<html><body>Could not log you in at this time, please try again later</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                else
+                {
+                    if (message.ChannelId == "skypeforbusiness")
+                        resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> {magicNumber} </body></html>", System.Text.Encoding.UTF8, @"text/html");
+                    else
+                        resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> <h1>{magicNumber}</h1>.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                }
+                return resp;
             }
             catch (Exception ex)
             {
@@ -149,9 +152,7 @@ namespace AuthBot.Controllers
                 number = number * 10 + digit;
             } while (number.ToString().Length < 6);
             return number;
-
         }
-
     }
 }
 
