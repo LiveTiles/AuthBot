@@ -36,13 +36,14 @@ namespace AuthBot
             }
             return null;
         }
+
         public static async Task<string> GetAccessToken(this IBotContext context, string[] scopes)
         {
             AuthResult authResult;
             string validated = null;
             if (context.UserData.TryGetValue(ContextConstants.AuthResultKey, out authResult) &&
-                context.UserData.TryGetValue(ContextConstants.MagicNumberValidated, out validated) &&
-                validated == "true")
+                (!AuthSettings.UseMagicNumber || (context.UserData.TryGetValue(ContextConstants.MagicNumberValidated, out validated) &&
+                validated == "true")))
             { 
 
                     try
@@ -82,10 +83,16 @@ namespace AuthBot
         public static async Task Logout(this IBotContext context)
         {
             context.UserData.RemoveValue(ContextConstants.AuthResultKey);
-            context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
-            context.UserData.RemoveValue(ContextConstants.MagicNumberValidated);
-            string signoutURl = "https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=" + System.Net.WebUtility.UrlEncode(AuthSettings.RedirectUrl);
-            await context.PostAsync($"In order to finish the sign out, please click this [link]({signoutURl}).");
+
+            if (AuthSettings.UseMagicNumber)
+            {
+                context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
+                context.UserData.RemoveValue(ContextConstants.MagicNumberValidated);
+                string signoutURl = "https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=" + System.Net.WebUtility.UrlEncode(AuthSettings.RedirectUrl);
+                await context.PostAsync($"In order to finish the sign out, please click this [link]({signoutURl}).");                
+            }
+            else
+                await context.PostAsync($"You have successfully been logged out.");
         }
 
     }

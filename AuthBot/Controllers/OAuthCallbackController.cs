@@ -16,6 +16,7 @@ namespace AuthBot.Controllers
     using Microsoft.Bot.Connector;
     using Microsoft.Rest;
     using Models;
+    using Dialogs;
 
     public class OAuthCallbackController : ApiController
     {
@@ -31,7 +32,7 @@ namespace AuthBot.Controllers
             try
             {
                 var resp = new HttpResponseMessage(HttpStatusCode.OK);
-                resp.Content = new StringContent($"<html><body>You have been signed out. You can now close this window.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                //resp.Content = new StringContent($"<html><body>You have been signed out. You can now close this window.</body></html>", System.Text.Encoding.UTF8, @"text/html");
                 return resp;
             }
             catch (Exception ex)
@@ -92,8 +93,13 @@ namespace AuthBot.Controllers
                         {
                             BotData userData = sc.BotState.GetUserData(message.ChannelId, message.From.Id);
                             userData.SetProperty(ContextConstants.AuthResultKey, authResult);
-                            userData.SetProperty(ContextConstants.MagicNumberKey, magicNumber);
-                            userData.SetProperty(ContextConstants.MagicNumberValidated, "false");
+
+                            if (AuthSettings.UseMagicNumber)
+                            {
+                                userData.SetProperty(ContextConstants.MagicNumberKey, magicNumber);
+                                userData.SetProperty(ContextConstants.MagicNumberValidated, "false");
+                            }
+
                             sc.BotState.SetUserData(message.ChannelId, message.From.Id, userData);
                             writeSuccessful = true;
                         }
@@ -110,28 +116,31 @@ namespace AuthBot.Controllers
                     var client = scope.Resolve<IConnectorClient>();
 
                     if (!writeSuccessful)
-                    {
                         reply.Text = "Could not log you in at this time, please try again later.";
-                        await client.Conversations.SendToConversationAsync(reply);
-                    }
-                    else
-                    {
+                    else if (AuthSettings.UseMagicNumber)
                         reply.Text = "Please paste back the number you received in your authentication screen.";
-                        await client.Conversations.SendToConversationAsync(reply);
-                        //await Conversation.ResumeAsync(conversationReference, message);
-                    }
+                    else
+                        reply.Text = $"Thank you {authResult.UserName}, you are now logged in.";
+
+                    await client.Conversations.SendToConversationAsync(reply);
                 }
 
-                var resp = new HttpResponseMessage(HttpStatusCode.OK);
+                if (writeSuccessful && !AuthSettings.UseMagicNumber)
+                    await Conversation.SendAsync(message, () => new AzureAuthDialog());
+
+                var resp = Request.CreateResponse(HttpStatusCode.OK);
                 if (!writeSuccessful)
                     resp.Content = new StringContent("<html><body>Could not log you in at this time, please try again later</body></html>", System.Text.Encoding.UTF8, @"text/html");
-                else
+                else if (AuthSettings.UseMagicNumber)
                 {
                     if (message.ChannelId == "skypeforbusiness")
                         resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> {magicNumber} </body></html>", System.Text.Encoding.UTF8, @"text/html");
                     else
                         resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> <h1>{magicNumber}</h1>.</body></html>", System.Text.Encoding.UTF8, @"text/html");
                 }
+                else
+                    resp.Content = new StringContent("<html><body>You have successfully been authenticated and can now continue talking to your bot.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+
                 return resp;
             }
             catch (Exception ex)

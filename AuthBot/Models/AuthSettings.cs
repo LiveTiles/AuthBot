@@ -9,6 +9,7 @@ namespace AuthBot.Models
 {
     public class AuthSettings
     {
+        public static bool UseMagicNumber { get; set; }
         public static string ClientId { get; set; }
         public static string ClientSecret { get; set; }
         public static string EndpointUrl { get; set; }
@@ -16,8 +17,6 @@ namespace AuthBot.Models
         public static string RedirectUrl { get; set; }
         public static string Mode { get; set; }
         public static string[] Scopes { get; set; }
-
-
     }
 }
 

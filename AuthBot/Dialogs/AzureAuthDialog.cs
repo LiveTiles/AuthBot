@@ -13,30 +13,33 @@ namespace AuthBot.Dialogs
     using System.Text.RegularExpressions;
     
     [Serializable]
-    public class AzureAuthDialog : IDialog<string>
+    public class AzureAuthDialog : IDialog<object>
     {
         protected string resourceId { get; }
         protected string[] scopes { get; }
         protected string prompt { get; }
         string _authenticationId;
 
-        public AzureAuthDialog(string resourceId, string prompt = "Please click to sign in: ")
+        public AzureAuthDialog(string resourceId, string prompt = "Please sign in to continue")
         {
             this.resourceId = resourceId;
             this.prompt = prompt;
         }
 
-        public AzureAuthDialog(string[] scopes, string prompt = "Please click to sign in: ")
+        public AzureAuthDialog(string[] scopes, string prompt = "Please sign in to continue")
         {
             this.scopes = scopes;
             this.prompt = prompt;
         }
 
+        //HACK: Required to continue dialog from OAuthCallbackController
+        public AzureAuthDialog() { }
+
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         public async Task StartAsync(IDialogContext context)
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
         {
-            context.Wait(this.MessageReceivedAsync);
+            context.Wait(MessageReceivedAsync);
         }
 
         public virtual async Task MessageReceivedAsync(IDialogContext context, IAwaitable<IMessageActivity> argument)
@@ -44,10 +47,11 @@ namespace AuthBot.Dialogs
             var msg = await argument;
 
             AuthResult authResult;
-            string validated = "";
-            int magicNumber = 0;
-            if (context.UserData.TryGetValue(ContextConstants.AuthResultKey, out authResult))
+            if (AuthSettings.UseMagicNumber && context.UserData.TryGetValue(ContextConstants.AuthResultKey, out authResult))
             {
+                string validated = "";
+                int magicNumber = 0;
+
                 try
                 {
                     //IMPORTANT: DO NOT REMOVE THE MAGIC NUMBER CHECK THAT WE DO HERE. THIS IS AN ABSOLUTE SECURITY REQUIREMENT
@@ -56,7 +60,8 @@ namespace AuthBot.Dialogs
                     context.UserData.TryGetValue<string>(ContextConstants.MagicNumberValidated, out validated);
                     if (validated == "true")
                     {
-                        context.Done($"Thanks {authResult.UserName}. You are now logged in. ");
+                        await context.PostAsync($"Thank you {authResult.UserName}, you are now logged in. ");
+                        context.Done(true);
                     }
                     else if (context.UserData.TryGetValue<int>(ContextConstants.MagicNumberKey, out magicNumber))
                     {
@@ -68,7 +73,8 @@ namespace AuthBot.Dialogs
                             AuthenticationStorageHelper.Delete(_authenticationId);
                             _authenticationId = string.Empty;
 
-                            context.Done($"Thanks {authResult.UserName}. You are now logged in. ");
+                            await context.PostAsync($"Thank you {authResult.UserName}, you are now logged in. ");
+                            context.Done(true);
                         }
                         else
                         {
@@ -77,7 +83,7 @@ namespace AuthBot.Dialogs
                             context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
                             await context.PostAsync($"I'm sorry but I couldn't validate your number. Please try authenticating once again. ");
 
-                            context.Wait(this.MessageReceivedAsync);
+                            context.Wait(MessageReceivedAsync);
                         }
                     }
                 }
@@ -86,13 +92,12 @@ namespace AuthBot.Dialogs
                     context.UserData.RemoveValue(ContextConstants.AuthResultKey);
                     context.UserData.SetValue(ContextConstants.MagicNumberValidated, "false");
                     context.UserData.RemoveValue(ContextConstants.MagicNumberKey);
-                    context.Done($"I'm sorry but something went wrong while authenticating.");
+                    await context.PostAsync($"I'm sorry but something went wrong while authenticating.");
+                    context.Done(false);
                 }
             }
             else
-            {
-                await this.CheckForLogin(context, msg);
-            }
+                await CheckForLogin(context, msg);
         }
 
         /// <summary>
@@ -181,9 +186,7 @@ namespace AuthBot.Dialogs
                 {
                     if (msg.Text != null &&
                         CancellationWords.GetCancellationWords().Contains(msg.Text.ToUpper()))
-                    {
-                        context.Done(string.Empty);
-                    }
+                        context.Done(false);
                     else
                     {
                         // Save authentication conversation reference to temp storage
@@ -198,13 +201,11 @@ namespace AuthBot.Dialogs
                             authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, scopes);
 
                         await PromptToLogin(context, msg, authenticationUrl);
-                        context.Wait(this.MessageReceivedAsync);
+                        context.Wait(MessageReceivedAsync);
                     }
                 }
                 else
-                {
-                    context.Done(string.Empty);
-                }
+                    context.Done(true);
             }
             catch (Exception ex)
             {
