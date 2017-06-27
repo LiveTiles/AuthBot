@@ -15,21 +15,21 @@ namespace AuthBot.Dialogs
     [Serializable]
     public class AzureAuthDialog : IDialog<object>
     {
-        protected string resourceId { get; }
-        protected string[] scopes { get; }
-        protected string prompt { get; }
+        protected string _resourceId { get; }
+        protected string[] _scopes { get; }
+        protected string _prompt { get; }
         string _authenticationId;
 
         public AzureAuthDialog(string resourceId, string prompt = "Please sign in to continue")
         {
-            this.resourceId = resourceId;
-            this.prompt = prompt;
+            _resourceId = resourceId;
+            _prompt = prompt;
         }
 
         public AzureAuthDialog(string[] scopes, string prompt = "Please sign in to continue")
         {
-            this.scopes = scopes;
-            this.prompt = prompt;
+            _scopes = scopes;
+            _prompt = prompt;
         }
 
         //HACK: Required to continue dialog from OAuthCallbackController
@@ -113,11 +113,11 @@ namespace AuthBot.Dialogs
             switch (msg.ChannelId)
             {
                 case "skypeforbusiness":
-                    return context.PostAsync(this.prompt + "[Click here](" + authenticationUrl + ")");
+                    return context.PostAsync(_prompt + "[Click here](" + authenticationUrl + ")");
                 case "emulator":
                 case "skype":
                     {
-                        SigninCard plCard = new SigninCard(this.prompt, GetCardActions(authenticationUrl, "signin"));
+                        SigninCard plCard = new SigninCard(_prompt, GetCardActions(authenticationUrl, "signin"));
                         plAttachment = plCard.ToAttachment();
                         break;
                     }
@@ -126,7 +126,7 @@ namespace AuthBot.Dialogs
                     {
                         ThumbnailCard plCard = new ThumbnailCard()
                         {
-                            Title = this.prompt,
+                            Title = _prompt,
                             Subtitle = "",
                             Images = new List<CardImage>(),
                             Buttons = GetCardActions(authenticationUrl, "openUrl")
@@ -136,7 +136,7 @@ namespace AuthBot.Dialogs
                     }
                 default:
                     {
-                        SigninCard plCard = new SigninCard(this.prompt, GetCardActions(authenticationUrl, "signin"));
+                        SigninCard plCard = new SigninCard(_prompt, GetCardActions(authenticationUrl, "signin"));
                         plAttachment = plCard.ToAttachment();
                         break;
                     }
@@ -177,10 +177,10 @@ namespace AuthBot.Dialogs
             try
             {
                 string token;
-                if (resourceId != null)
-                    token = await context.GetAccessToken(resourceId);
+                if (!string.IsNullOrEmpty(_resourceId))
+                    token = await context.GetAccessToken(_resourceId);
                 else
-                    token = await context.GetAccessToken(scopes);
+                    token = await context.GetAccessToken(_scopes);
 
                 if (string.IsNullOrEmpty(token))
                 {
@@ -195,10 +195,10 @@ namespace AuthBot.Dialogs
                             new ConversationReference(msg.Id, msg.From, msg.Recipient, msg.Conversation, msg.ChannelId, msg.ServiceUrl));
 
                         string authenticationUrl;
-                        if (resourceId != null)
-                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, resourceId);
+                        if (!string.IsNullOrEmpty(_resourceId))
+                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, _resourceId);
                         else
-                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, scopes);
+                            authenticationUrl = await AzureActiveDirectoryHelper.GetAuthUrlAsync(_authenticationId, _scopes);
 
                         await PromptToLogin(context, msg, authenticationUrl);
                         context.Wait(MessageReceivedAsync);

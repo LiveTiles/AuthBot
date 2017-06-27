@@ -34,6 +34,7 @@ namespace AuthBot
                 }
                 return authResult.AccessToken;
             }
+
             return null;
         }
 
@@ -44,10 +45,9 @@ namespace AuthBot
             if (context.UserData.TryGetValue(ContextConstants.AuthResultKey, out authResult) &&
                 (!AuthSettings.UseMagicNumber || (context.UserData.TryGetValue(ContextConstants.MagicNumberValidated, out validated) &&
                 validated == "true")))
-            { 
-
-                    try
-                    {
+            {
+                try
+                {
                     if (string.Equals(AuthSettings.Mode, "v2", StringComparison.OrdinalIgnoreCase))
                     {
                         InMemoryTokenCacheMSAL tokenCache = new InMemoryTokenCacheMSAL(authResult.TokenCache);
@@ -69,6 +69,7 @@ namespace AuthBot
                     await context.Logout();
                     return null;
                 }
+
                 return authResult.AccessToken;
             }
 
