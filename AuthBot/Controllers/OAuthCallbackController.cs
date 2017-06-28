@@ -101,7 +101,7 @@ namespace AuthBot.Controllers
                             }
 
                             sc.BotState.SetUserData(message.ChannelId, message.From.Id, userData);
-                            writeSuccessful = true;
+                            writeSuccessful = true;   
                         }
                         catch (Exception)
                         {
@@ -126,20 +126,31 @@ namespace AuthBot.Controllers
                 }
 
                 if (writeSuccessful && !AuthSettings.UseMagicNumber)
-                    await Conversation.SendAsync(message, () => new AzureAuthDialog());
+                {
+                    // Remove temp authentication conversation reverence
+                    AuthenticationStorageHelper.Delete(state);
+
+                    // Re-direct to dialog
+                    await Conversation.ResumeAsync(conversationReference, message);
+                }
 
                 var resp = Request.CreateResponse(HttpStatusCode.OK);
                 if (!writeSuccessful)
-                    resp.Content = new StringContent("<html><body>Could not log you in at this time, please try again later</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                    resp.Content = new StringContent("<html><body>Could not log you in at this time, please try again later</body></html>", 
+                        System.Text.Encoding.UTF8, @"text/html");
                 else if (AuthSettings.UseMagicNumber)
                 {
                     if (message.ChannelId == "skypeforbusiness")
-                        resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> {magicNumber} </body></html>", System.Text.Encoding.UTF8, @"text/html");
+                        resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> {magicNumber} </body></html>", 
+                            System.Text.Encoding.UTF8, @"text/html");
                     else
-                        resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> <h1>{magicNumber}</h1>.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                        resp.Content = new StringContent($"<html><body>Almost done! Please copy this number and paste it back to your chat so your authentication can complete:<br/> <h1>{magicNumber}</h1>.</body></html>", 
+                            System.Text.Encoding.UTF8, @"text/html");
                 }
                 else
-                    resp.Content = new StringContent("<html><body>You have successfully been authenticated and can now continue talking to your bot.</body></html>", System.Text.Encoding.UTF8, @"text/html");
+                    resp.Content = new StringContent(
+                        "<html><body>You have successfully been authenticated and can now continue talking to your bot.</body></html>", 
+                        System.Text.Encoding.UTF8, @"text/html");
 
                 return resp;
             }
